@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hat Detection Background</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        background: #ffffff;
+        transition: background-color 0.8s ease;
+      }
+
+      body.has-hat {
+        background: #000000;
+      }
+
+      video {
+        display: none;
+      }
+
+      canvas {
+        display: none;
+      }
+
+      input[type="password"] {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        padding: 8px;
+        font-size: 12px;
+        width: 200px;
+        z-index: 10;
+      }
+
+      #status {
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        font-size: 12px;
+        color: #666;
+        z-index: 10;
+      }
+    </style>
+  </head>
+  <body>
+    <input type="password" id="apiKey" placeholder="sk-..." />
+    <div id="status">Starting...</div>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <script>
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const apiKeyInput = document.getElementById("apiKey");
+      const statusDiv = document.getElementById("status");
+
+      let stream = null;
+      let analyzeInterval = null;
+
+      async function startCamera() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: false,
+          });
+          video.srcObject = stream;
+          statusDiv.textContent = "Camera active";
+
+          // Start capturing every 10 seconds
+          analyzeInterval = setInterval(captureAndAnalyze, 10000);
+          // Also capture immediately
+          captureAndAnalyze();
+        } catch (error) {
+          statusDiv.textContent = `Camera error: ${error.message}`;
+          console.error("Camera error:", error);
+        }
+      }
+
+      async function captureAndAnalyze() {
+        if (!video.videoWidth || !video.videoHeight) return;
+
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+          statusDiv.textContent = "Enter API key";
+          return;
+        }
+
+        try {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(video, 0, 0);
+
+          const imageBase64 = canvas.toDataURL("image/jpeg").split(",")[1];
+
+          statusDiv.textContent = "Analyzing...";
+
+          const response = await fetch(
+            "https://api.openai.com/v1/chat/completions",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: "gpt-4o-2024-08-06",
+                messages: [
+                  {
+                    role: "user",
+                    content: [
+                      {
+                        type: "text",
+                        text: "Analyze this image and respond with a JSON object containing: { isHat: boolean }. Determine if there is a hat visible in the image.",
+                      },
+                      {
+                        type: "image_url",
+                        image_url: {
+                          url: `data:image/jpeg;base64,${imageBase64}`,
+                        },
+                      },
+                    ],
+                  },
+                ],
+                max_completion_tokens: 100,
+                response_format: { type: "json_object" },
+              }),
+            },
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(
+              errorData.error?.message || `API error: ${response.status}`,
+            );
+          }
+
+          const data = await response.json();
+          const rawContent = data.choices[0].message.content;
+
+          let parsedResponse;
+          try {
+            parsedResponse = JSON.parse(rawContent);
+          } catch (e) {
+            console.error("Failed to parse JSON response:", e);
+            parsedResponse = { isHat: false };
+          }
+
+          // Update background based on isHat property
+          const hasHat = parsedResponse.isHat === true;
+          if (hasHat) {
+            document.body.classList.add("has-hat");
+          } else {
+            document.body.classList.remove("has-hat");
+          }
+
+          statusDiv.textContent = `${hasHat ? "🎩 Hat detected" : "No hat"} - ${new Date().toLocaleTimeString()}`;
+        } catch (error) {
+          statusDiv.textContent = `Error: ${error.message}`;
+          console.error("Analysis error:", error);
+        }
+      }
+
+      // Auto-start camera
+      startCamera();
+    </script>
+  </body>
+</html>
