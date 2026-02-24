@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ollama — qwen3:0.6b chat</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial;
+        margin: 24px;
+        background: #fafafa;
+      }
+      .card {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+      }
+      textarea {
+        width: 100%;
+        height: 100px;
+        padding: 10px;
+        font-size: 14px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        resize: vertical;
+      }
+      button {
+        margin-top: 10px;
+        padding: 8px 14px;
+        font-size: 15px;
+        border-radius: 6px;
+        border: 0;
+        background: #0066ff;
+        color: white;
+      }
+      pre {
+        white-space: pre-wrap;
+        background: #f6f8fa;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid #eee;
+      }
+      .meta {
+        color: #666;
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      code {
+        background: #f3f4f6;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>Ask qwen3:0.6b (Ollama)</h2>
+      <p class="meta">
+        Sends your question to a local Ollama instance at
+        <code>http://localhost:11434/api/chat</code>.
+      </p>
+
+      <form id="chatForm">
+        <label for="systemPrompt">System Prompt</label>
+        <textarea
+          id="systemPrompt"
+          placeholder="Define how the model should behave (optional)..."
+        ></textarea>
+
+        <label for="question">Your question</label>
+        <textarea
+          id="question"
+          placeholder="Type a question for qwen3:0.6b..."
+        ></textarea>
+        <div>
+          <button id="send">Send</button>
+        </div>
+      </form>
+
+      <h3>Response</h3>
+      <pre id="response">(no response yet)</pre>
+      <p class="meta" id="status"></p>
+    </div>
+
+    <script>
+      const form = document.getElementById("chatForm");
+      const systemPromptEl = document.getElementById("systemPrompt");
+      const questionEl = document.getElementById("question");
+      const respEl = document.getElementById("response");
+      const statusEl = document.getElementById("status");
+      const sendBtn = document.getElementById("send");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const q = questionEl.value.trim();
+        if (!q) return;
+        sendBtn.disabled = true;
+        statusEl.textContent = "Sending...";
+        respEl.textContent = "";
+
+        try {
+          const messages = [];
+          const systemPrompt = systemPromptEl.value.trim();
+          if (systemPrompt) {
+            messages.push({ role: "system", content: systemPrompt });
+          }
+          messages.push({ role: "user", content: q });
+
+          const payload = {
+            model: "qwen3:0.6b",
+            messages: messages,
+            stream: false,
+          };
+
+          const res = await fetch("http://localhost:11434/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`HTTP ${res.status}: ${text}`);
+          }
+
+          const data = await res.json();
+
+          if (
+            data &&
+            data.message &&
+            typeof data.message.content === "string"
+          ) {
+            respEl.textContent = data.message.content;
+          } else {
+            respEl.textContent = JSON.stringify(data, null, 2);
+          }
+
+          statusEl.textContent = "Done.";
+        } catch (err) {
+          respEl.textContent = "Error: " + (err.message || err);
+          statusEl.textContent = "Failed.";
+        } finally {
+          sendBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
